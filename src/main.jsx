@@ -1,0 +1,9 @@
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import Workbook from './Workbook.jsx'
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <Workbook />
+  </React.StrictMode>
+)
