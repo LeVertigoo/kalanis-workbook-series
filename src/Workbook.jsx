@@ -184,12 +184,24 @@ export default function Workbook() {
   const hasValidSeries = series.some(s=>s.name.trim())
 
   // Result
+  const buildHtmlDoc = () => {
+    const resHtml = buildResultHtml()
+    const title = `Tes séries, ${name} 🎯`
+    return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${title} — Kalanis</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#FAF9F2;padding:2rem 1rem}.container{max-width:620px;margin:0 auto}h1{font-size:1.4rem;font-weight:800;color:#121C28;margin-bottom:.4rem}.meta{font-size:.8rem;color:#718096;margin-bottom:1.5rem}.badge{display:inline-block;background:#018EBB;color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;text-transform:uppercase;font-weight:700;letter-spacing:.08em;margin-bottom:1rem}.chip{display:inline-block;background:rgba(1,142,187,.10);color:#018EBB;border-radius:20px;padding:3px 11px;font-size:.77rem;font-weight:700;margin:2px}.rh{background:rgba(1,142,187,.06);border:1.5px solid rgba(1,142,187,.15);border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem}.rs{background:#fff;border:1.5px solid rgba(18,28,40,.10);border-radius:14px;padding:1.1rem 1.25rem;margin-bottom:.85rem}.rs-title{font-size:.94rem;font-weight:800;color:#121C28;margin-bottom:.4rem}.rs-prob{font-size:.79rem;color:#4a5568;margin-bottom:.7rem;font-style:italic}.rs-posts{list-style:none}.rs-posts li{font-size:.79rem;color:#4a5568;padding:4px 0;display:flex;align-items:flex-start;gap:7px;line-height:1.4}.rs-fmt{font-size:.64rem;font-weight:700;background:rgba(1,142,187,.10);color:#018EBB;border-radius:5px;padding:2px 7px;flex-shrink:0;margin-top:1px}footer{text-align:center;font-size:.72rem;color:#a0aec0;margin-top:2rem;padding-top:1rem;border-top:1px solid rgba(18,28,40,.07)}</style>
+</head><body><div class="container"><div class="badge">Kalanis • Séries de Posts</div><h1>${title}</h1>
+<p class="meta">Généré le ${new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}</p>
+${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>`
+  }
+
   const buildPayload = () => ({
     nom: name,
     email: email || null,
     sujets: subjects.filter(Boolean),
     format_principal: FMT[fmt]||fmt,
     cadence: CAD[cad]||cad,
+    filename: `Kalanis_Series_${name.replace(/\s+/g,'_')}.html`,
+    html_content: buildHtmlDoc(),
     observations: filled.map(x=>({
       sujet: x.t,
       erreur_frequente: exps[x.i].e||null,
@@ -221,14 +233,7 @@ export default function Workbook() {
   }
 
   const downloadResult = () => {
-    const el = document.getElementById('res-content')
-    if (!el) return
-    const title = `Tes séries, ${name} 🎯`
-    const doc = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${title} — Kalanis</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#FAF9F2;padding:2rem 1rem}.container{max-width:620px;margin:0 auto}h1{font-size:1.4rem;font-weight:800;color:#121C28;margin-bottom:.4rem}.meta{font-size:.8rem;color:#718096;margin-bottom:1.5rem}.badge{display:inline-block;background:#018EBB;color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;text-transform:uppercase;font-weight:700;letter-spacing:.08em;margin-bottom:1rem}.chip{display:inline-block;background:rgba(1,142,187,.10);color:#018EBB;border-radius:20px;padding:3px 11px;font-size:.77rem;font-weight:700;margin:2px}.rh{background:rgba(1,142,187,.06);border:1.5px solid rgba(1,142,187,.15);border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem}.rs{background:#fff;border:1.5px solid rgba(18,28,40,.10);border-radius:14px;padding:1.1rem 1.25rem;margin-bottom:.85rem}.rs-title{font-size:.94rem;font-weight:800;color:#121C28;margin-bottom:.4rem}.rs-prob{font-size:.79rem;color:#4a5568;margin-bottom:.7rem;font-style:italic}.rs-posts{list-style:none}.rs-posts li{font-size:.79rem;color:#4a5568;padding:4px 0;display:flex;align-items:flex-start;gap:7px;line-height:1.4}.rs-fmt{font-size:.64rem;font-weight:700;background:rgba(1,142,187,.10);color:#018EBB;border-radius:5px;padding:2px 7px;flex-shrink:0;margin-top:1px}footer{text-align:center;font-size:.72rem;color:#a0aec0;margin-top:2rem;padding-top:1rem;border-top:1px solid rgba(18,28,40,.07)}</style>
-</head><body><div class="container"><div class="badge">Kalanis • Séries de Posts</div><h1>${title}</h1>
-<p class="meta">Généré le ${new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}</p>
-${el.innerHTML}<footer>Kalanis — Document confidentiel</footer></div></body></html>`
+    const doc = buildHtmlDoc()
     const blob = new Blob([doc], {type:'text/html;charset=utf-8'})
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
