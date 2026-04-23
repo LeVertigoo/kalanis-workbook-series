@@ -1,13 +1,4 @@
 import { useState, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
-
-// --- CONFIGURATION SUPABASE ---
-const SUPABASE_URL = 'https://qglyfohuebgbuztjqaok.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnbHlmb2h1ZWJnYnV6dGpxYW9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTgxODQsImV4cCI6MjA5MTgzNDE4NH0.HKqxiTKQDV8zvfpTmE8RlDq_GsbwHATzfn1gyDkJLxQ'
-const BUCKET_NAME = 'formation-docs'
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-// ------------------------------
 
 const WEBHOOK_URL = 'https://n8n.srv1272919.hstgr.cloud/webhook/kalanis-workbook-series'
 
@@ -16,7 +7,6 @@ const CAD = { '1-2': '1–2 posts/sem', '3-4': '3–4 posts/sem', '5+': '5+ post
 
 const mkS = () => ({ name: '', prob: '', posts: [{ idea: '', fmt: '' }, { idea: '', fmt: '' }, { idea: '', fmt: '' }] })
 
-// Le CSS reste identique au tien
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Parkinsans:wght@400;600;700;800&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -193,7 +183,7 @@ export default function Workbook() {
 
   const hasValidSeries = series.some(s=>s.name.trim())
 
-  // Result & Supabase
+  // Result
   const buildHtmlDoc = () => {
     const resHtml = buildResultHtml()
     const title = `Tes séries, ${name} 🎯`
@@ -204,81 +194,41 @@ export default function Workbook() {
 ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>`
   }
 
+  const buildPayload = () => ({
+    nom: name,
+    email: email || null,
+    sujets: subjects.filter(Boolean),
+    format_principal: FMT[fmt]||fmt,
+    cadence: CAD[cad]||cad,
+    filename: `Kalanis_Series_${name.replace(/\s+/g,'_')}.html`,
+    html_content: buildHtmlDoc(),
+    observations: filled.map(x=>({
+      sujet: x.t,
+      erreur_frequente: exps[x.i].e||null,
+      question_recurrente: exps[x.i].q||null,
+      resultat_obtenu: exps[x.i].r||null,
+    })).filter(o=>o.erreur_frequente||o.question_recurrente||o.resultat_obtenu),
+    series: series.filter(s=>s.name).map((s,i)=>({
+      numero: i+1,
+      nom: s.name,
+      probleme: s.prob||null,
+      posts: s.posts.filter(p=>p.idea).map(p=>({idee:p.idea,format:FMT[p.fmt]||null}))
+    }))
+  })
+
   const handleResult = async () => {
     setSlackOk(false); setSlackErr('')
     go('result')
-    
     try {
-      const fileName = `workbook-series/Kalanis_Series_${name.replace(/\s+/g,'_')}_${Date.now()}.html`
-      const htmlContent = buildHtmlDoc()
-      
-      // Conversion en Blob pour garantir l'encodage UTF-8 et le type HTML
-      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' })
-
-      // 1. UPLOAD VERS SUPABASE
-      const { data, error: uploadError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(fileName, blob, { // On envoie le blob ici
-          contentType: 'text/html',
-          upsert: true
-        })
-
-      if (uploadError) throw uploadError
-
-      // 2. RECUPERER L'URL PUBLIQUE
-      const { data: { publicUrl } } = supabase.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(fileName)
-
-      // 3. ENVOYER AU WEBHOOK N8N
-      const payload = {
-        nom: name,
-        email: email || null,
-        url_document: publicUrl,
-        sujets: subjects.filter(Boolean),
-        format_principal: FMT[fmt]||fmt,
-        cadence: CAD[cad]||cad,
-        observations: filled.map(x=>({
-          sujet: x.t,
-          erreur_frequente: exps[x.i].e||null,
-          question_recurrente: exps[x.i].q||null,
-          resultat_obtenu: exps[x.i].r||null,
-        })).filter(o=>o.erreur_frequente||o.question_recurrente||o.resultat_obtenu),
-        series: series.filter(s=>s.name).map((s,i)=>({
-          numero: i+1,
-          nom: s.name,
-          probleme: s.prob||null,
-          posts: s.posts.filter(p=>p.idea).map(p=>({idee:p.idea,format:FMT[p.fmt]||null}))
-        }))
-      }
-
       const resp = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(buildPayload())
       })
-
       if (resp.ok) setSlackOk(true)
-      else setSlackErr(`Le fichier est prêt, mais Slack n'a pas pu être notifié. URL : ${publicUrl}`)
-
-    } catch (err) {
-      console.error("Erreur détaillée:", err)
-      setSlackErr("Erreur lors de l'hébergement du fichier. Vérifie que le bucket est bien Public.")
-    }
-  }
-
-      const resp = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-
-      if (resp.ok) setSlackOk(true)
-      else setSlackErr(`L'upload a réussi mais n8n n'a pas répondu. URL : ${publicUrl}`)
-
-    } catch (err) {
-      console.error(err)
-      setSlackErr("Erreur technique lors de l'hébergement du fichier. Tu peux toujours le télécharger manuellement ci-dessous.")
+      else setSlackErr(`Erreur ${resp.status} lors de l'envoi. Télécharge le résumé ci-dessous.`)
+    } catch {
+      setSlackErr("Impossible de joindre le webhook N8N. Télécharge le résumé ci-dessous.")
     }
   }
 
@@ -482,20 +432,23 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
                 {series.map((s,si)=>(
                   <div key={si} className="sc">
                     <div className="sc-head">
-                      <div className="sc-num">Série #{si+1}</div>
-                      {series.length>1 && <button className="btn-rm-s" onClick={()=>rmSeries(si)}>Supprimer la série</button>}
+                      <span className="sc-num">Série {si+1}</span>
+                      {series.length>1 && <button className="btn-rm-s" onClick={()=>rmSeries(si)}>✕ Supprimer</button>}
                     </div>
-                    <span className="lbl">Nom de la série</span>
-                    <input className="inp" placeholder="ex : La Minute SEO / Les erreurs LinkedIn..." value={s.name} onChange={e=>updateSeries(si,'name',e.target.value)}/>
-                    <span className="lbl">Problème résolu</span>
-                    <input className="inp" placeholder="ex : Ne plus savoir quoi écrire le matin..." value={s.prob} onChange={e=>updateSeries(si,'prob',e.target.value)}/>
-                    
+                    <span className="lbl">Nom de la série *</span>
+                    <p className="hint">Un titre court et mémorable — inspire-toi de tes observations si besoin</p>
+                    <input className="inp" placeholder="ex : Les erreurs de profil LinkedIn" value={s.name} onChange={e=>updateSeries(si,'name',e.target.value)}/>
+                    <span className="lbl">Problème traité</span>
+                    <p className="hint">Quelle douleur de ta cible cette série adresse-t-elle directement ?</p>
+                    <input className="inp" placeholder="ex : Mon client ne comprend pas pourquoi son profil n'attire pas les bons prospects" value={s.prob} onChange={e=>updateSeries(si,'prob',e.target.value)}/>
+                    <span className="lbl">Idées de posts <span style={{fontWeight:400,color:'#718096'}}>— 1 idée = 1 format</span></span>
+                    <p className="hint">Commence par l'erreur, enchaîne la solution, conclus avec un résultat. Ajoute autant d'idées que tu veux.</p>
                     <div className="posts-list">
                       {s.posts.map((p,pi)=>(
                         <div key={pi} className="p-row">
                           <div className="p-row-top">
                             <div className="pnum">{pi+1}</div>
-                            <input className="pinp" placeholder={POST_PH[pi]||"Nouvelle idée de post..."} value={p.idea} onChange={e=>updatePost(si,pi,'idea',e.target.value)}/>
+                            <input className="pinp" placeholder={POST_PH[Math.min(pi,POST_PH.length-1)]} value={p.idea} onChange={e=>updatePost(si,pi,'idea',e.target.value)}/>
                             {s.posts.length>1 && <button className="btn-rmp" onClick={()=>rmPost(si,pi)}>×</button>}
                           </div>
                           <div className="fpills">
@@ -506,17 +459,12 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
                         </div>
                       ))}
                     </div>
-                    <button className="btn-add-p" onClick={()=>addPost(si)}>+ Ajouter un post à cette série</button>
+                    <button className="btn-add-p" onClick={()=>addPost(si)}>+ Ajouter une idée de post</button>
                   </div>
                 ))}
               </div>
-
-              <button className="btn-add-s" onClick={addSeries}>+ Créer une nouvelle série</button>
-
-              <div className="btn-row">
-                <button className="btn-g" onClick={()=>go('explore')}>← Retour</button>
-                <button className="btn-b" disabled={!hasValidSeries} onClick={handleResult}>Terminer et envoyer →</button>
-              </div>
+              <button className="btn-add-s" onClick={addSeries}>+ Ajouter une série</button>
+              <button className="btn-p" disabled={!hasValidSeries} onClick={handleResult}>Voir le résumé →</button>
             </div>
           )}
 
@@ -524,33 +472,25 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
           {screen==='result' && (
             <div className="qcard">
               <div className="prog-bar"><div className="prog-fill" style={{width:'100%'}}/></div>
-              <div className="badge">C'est terminé !</div>
-              <h2>Tes séries sont prêtes</h2>
-              <p className="sub">Tes réponses ont été sauvegardées et envoyées à Sarah. Tu peux retrouver le résumé ci-dessous.</p>
-
-              {slackOk ? (
+              <div className="badge">Résumé final ✓</div>
+              <h2>Tes séries, {name} 🎯</h2>
+              <p className="sub">Voici le résumé de tes séries. Il a été envoyé automatiquement à Sarah sur Slack — elle l'aura avant votre call.</p>
+              {slackOk && (
                 <div className="ok-banner">
-                  <span style={{fontSize:'1.2rem'}}>✅</span>
-                  <div>
-                    Ton document a été hébergé sur Supabase et transmis à Sarah.
-                  </div>
-                </div>
-              ) : slackErr ? (
-                <div className="err-banner">
-                  <span style={{fontSize:'1.1rem'}}>⚠️</span>
-                  <div>{slackErr}</div>
-                </div>
-              ) : (
-                <div className="ok-banner" style={{background:'rgba(1,142,187,.05)', borderColor:'rgba(1,142,187,.2)', color:'#018EBB'}}>
-                  <span>⏳</span> Envoi en cours vers Supabase...
+                  <span style={{fontSize:'1.1rem',flexShrink:0}}>✅</span>
+                  <span>Résumé envoyé dans ton canal Slack ! Sarah le recevra avant votre call pour préparer votre session.</span>
                 </div>
               )}
-
-              <div dangerouslySetInnerHTML={{__html: buildResultHtml()}} />
-
-              <button className="btn-p" style={{marginTop:'1.5rem'}} onClick={downloadResult}>Télécharger le résumé (HTML)</button>
-              <button className="btn-dl" onClick={resetAll}>Recommencer</button>
-              <p className="fn">Workbook Propulsé par Kalanis</p>
+              {slackErr && (
+                <div className="err-banner">
+                  <span>⚠️</span>
+                  <span>{slackErr}</span>
+                </div>
+              )}
+              <div id="res-content" dangerouslySetInnerHTML={{__html: buildResultHtml()}}/>
+              <button className="btn-dl" onClick={downloadResult}>⬇ Télécharger le résumé (HTML)</button>
+              <button className="btn-g" onClick={resetAll} style={{marginTop:'.6rem',width:'100%',display:'block'}}>Recommencer</button>
+              <p className="fn">Sarah recevra ce résumé avant votre call pour préparer votre session ensemble.</p>
             </div>
           )}
 
