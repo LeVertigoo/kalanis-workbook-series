@@ -1,9 +1,12 @@
 import { useState, useRef } from 'react'
+import { createClient } from '@supabase/supabase-js'
 
 const WEBHOOK_URL = 'https://n8n.srv1272919.hstgr.cloud/webhook/kalanis-workbook-series'
 const SUPABASE_URL = 'https://qglyfohuebgbuztjqaok.supabase.co'
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnbHlmb2h1ZWJnYnV6dGpxYW9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTgxODQsImV4cCI6MjA5MTgzNDE4NH0.HKqxiTKQDV8zvfpTmE8RlDq_GsbwHATzfn1gyDkJLxQ'
-const STORAGE_PATH = 'formation-docs/workbook-series'
+const STORAGE_BUCKET = 'formation-docs'
+const STORAGE_FOLDER = 'workbook-series'
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
 
 const FMT = { texte: 'Texte', image: 'Texte + image', infographie: 'Infographie', carrousel: 'Carrousel', video: 'Vidéo' }
 const CAD = { '1-2': '1–2 posts/sem', '3-4': '3–4 posts/sem', '5+': '5+ posts/sem' }
@@ -223,20 +226,19 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
     setSlackOk(false); setSlackErr('')
     go('result')
     try {
-      // 1. Upload HTML vers Supabase Storage
+      // 1. Upload HTML vers Supabase Storage via SDK
       const filename = `Kalanis_Series_${name.replace(/\s+/g,'_')}.html`
       const htmlDoc = buildHtmlDoc()
       const htmlBlob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' })
-      await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_PATH}/${filename}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${SUPABASE_ANON}`,
-          'Content-Type': 'text/html;charset=utf-8',
-          'x-upsert': 'true'
-        },
-        body: htmlBlob
-      })
-      const html_url = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_PATH}/${filename}`
+      await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(`${STORAGE_FOLDER}/${filename}`, htmlBlob, {
+          contentType: 'text/html;charset=utf-8',
+          upsert: true
+        })
+      const { data: { publicUrl: html_url } } = supabase.storage
+        .from(STORAGE_BUCKET)
+        .getPublicUrl(`${STORAGE_FOLDER}/${filename}`)
 
       // 2. Envoi webhook N8N avec l'URL publique
       const resp = await fetch(WEBHOOK_URL, {
