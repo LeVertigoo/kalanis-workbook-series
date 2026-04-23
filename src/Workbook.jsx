@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 // --- CONFIGURATION SUPABASE ---
+// URL corrigée (sans le /rest/v1/)
 const SUPABASE_URL = 'https://qglyfohuebgbuztjqaok.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnbHlmb2h1ZWJnYnV6dGpxYW9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTgxODQsImV4cCI6MjA5MTgzNDE4NH0.HKqxiTKQDV8zvfpTmE8RlDq_GsbwHATzfn1gyDkJLxQ'
 const BUCKET_NAME = 'formation-docs'
@@ -16,7 +17,6 @@ const CAD = { '1-2': '1–2 posts/sem', '3-4': '3–4 posts/sem', '5+': '5+ post
 
 const mkS = () => ({ name: '', prob: '', posts: [{ idea: '', fmt: '' }, { idea: '', fmt: '' }, { idea: '', fmt: '' }] })
 
-// Le CSS reste identique au tien
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Parkinsans:wght@400;600;700;800&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -209,16 +209,19 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
     go('result')
     
     try {
+      // Modif : Ajout du dossier workbook-series/
       const fileName = `workbook-series/Kalanis_Series_${name.replace(/\s+/g,'_')}_${Date.now()}.html`
       const htmlContent = buildHtmlDoc()
+
+      // Modif : Conversion en Blob UTF-8 pour les accents
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' })
 
       // 1. UPLOAD VERS SUPABASE
       const { data, error: uploadError } = await supabase.storage
         .from(BUCKET_NAME)
-        .upload(fileName, htmlContent, {
+        .upload(fileName, blob, { // On envoie le blob
           contentType: 'text/html',
-          cacheControl: '3600',
-          upsert: false
+          upsert: true
         })
 
       if (uploadError) throw uploadError
@@ -228,11 +231,11 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
         .from(BUCKET_NAME)
         .getPublicUrl(fileName)
 
-      // 3. ENVOYER AU WEBHOOK N8N (Avec l'URL Supabase)
+      // 3. ENVOYER AU WEBHOOK N8N
       const payload = {
         nom: name,
         email: email || null,
-        url_document: publicUrl, // <-- C'est ça que n8n va recevoir !
+        url_document: publicUrl,
         sujets: subjects.filter(Boolean),
         format_principal: FMT[fmt]||fmt,
         cadence: CAD[cad]||cad,
@@ -434,71 +437,69 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
 
           {/* SERIES */}
           {screen==='series' && (
-            <div className="qcard">
+            <div className="qcard" ref={listRef}>
               <div className="prog-bar"><div className="prog-fill" style={{width:'85%'}}/></div>
               <div className="badge">Tes séries</div>
               <h2>Construis tes séries de posts</h2>
-              <p className="sub">En t'appuyant sur tes observations ci-dessous, identifie et structure tes séries. Chaque idée de post a son propre format.</p>
-              <div className="chips">{subjects.filter(Boolean).map((s,i)=><span key={i} className="chip">{s}</span>)}</div>
-
-              {filled.some(x=>{const e=exps[x.i];return e.e||e.q||e.r}) && (
-                <>
-                  <button className="seeds-toggle" onClick={()=>setSeedsOpen(o=>!o)}>
-                    <span>📎 Tes observations — cliquer pour {seedsOpen?'masquer':'afficher'}</span>
-                    <span>{seedsOpen?'▴':'▾'}</span>
-                  </button>
-                  <div className={`seeds-body${seedsOpen?' open':''}`}>
-                    {filled.map(x=>{
-                      const e=exps[x.i]; if(!e.e&&!e.q&&!e.r)return null
-                      return <div key={x.i}>
-                        <div className="sg-t">{x.t}</div>
-                        {e.e&&<div className="seed-row"><span className="stag">Erreur fréquente</span>{e.e}</div>}
-                        {e.q&&<div className="seed-row"><span className="stag">Question récurrente</span>{e.q}</div>}
-                        {e.r&&<div className="seed-row"><span className="stag">Résultat obtenu</span>{e.r}</div>}
-                      </div>
-                    })}
-                  </div>
-                </>
-              )}
-
-              <div ref={listRef}>
-                {series.map((s,si)=>(
-                  <div key={si} className="sc">
-                    <div className="sc-head">
-                      <div className="sc-num">Série #{si+1}</div>
-                      {series.length>1 && <button className="btn-rm-s" onClick={()=>rmSeries(si)}>Supprimer la série</button>}
+              <p className="sub">En t'appuyant sur tes observations précédentes, identifie les séries de posts que tu pourrais créer.</p>
+              
+              <button className="seeds-toggle" onClick={()=>setSeedsOpen(!seedsOpen)}>
+                <span>💡 Rappel de tes observations terrain</span>
+                <span>{seedsOpen?'↑':'↓'}</span>
+              </button>
+              <div className={`seeds-body ${seedsOpen?'open':''}`}>
+                {filled.map(x=>{
+                  const e=exps[x.i]; if(!e.e&&!e.q&&!e.r)return null;
+                  return (
+                    <div key={x.i} style={{marginBottom:'12px'}}>
+                      <div className="sg-t">{x.t}</div>
+                      {e.e && <div className="seed-row"><span className="stag">Erreur</span>{e.e}</div>}
+                      {e.q && <div className="seed-row"><span className="stag">Question</span>{e.q}</div>}
+                      {e.r && <div className="seed-row"><span className="stag">Résultat</span>{e.r}</div>}
                     </div>
-                    <span className="lbl">Nom de la série</span>
-                    <input className="inp" placeholder="ex : La Minute SEO / Les erreurs LinkedIn..." value={s.name} onChange={e=>updateSeries(si,'name',e.target.value)}/>
-                    <span className="lbl">Problème résolu</span>
-                    <input className="inp" placeholder="ex : Ne plus savoir quoi écrire le matin..." value={s.prob} onChange={e=>updateSeries(si,'prob',e.target.value)}/>
-                    
+                  )
+                })}
+              </div>
+
+              {series.map((s, si)=>(
+                <div key={si} className="sc">
+                  <div className="sc-head">
+                    <div className="sc-num">Série n°{si+1}</div>
+                    {series.length>1 && <button className="btn-rm-s" onClick={()=>rmSeries(si)}>Supprimer la série</button>}
+                  </div>
+                  <span className="lbl">Nom de la série *</span>
+                  <input className="inp" placeholder="ex : La Minute Profil" value={s.name} onChange={e=>updateSeries(si,'name',e.target.value)}/>
+                  <span className="lbl">Quel problème elle résout ?</span>
+                  <input className="inp" placeholder="ex : Aide les freelances à avoir un profil qui convertit..." value={s.prob} onChange={e=>updateSeries(si,'prob',e.target.value)}/>
+                  
+                  <div style={{marginTop:'1.2rem'}}>
+                    <span className="lbl">Tes idées de posts</span>
                     <div className="posts-list">
-                      {s.posts.map((p,pi)=>(
+                      {s.posts.map((p, pi)=>(
                         <div key={pi} className="p-row">
                           <div className="p-row-top">
                             <div className="pnum">{pi+1}</div>
-                            <input className="pinp" placeholder={POST_PH[pi]||"Nouvelle idée de post..."} value={p.idea} onChange={e=>updatePost(si,pi,'idea',e.target.value)}/>
+                            <input className="pinp" placeholder={POST_PH[pi]||"Autre idée..."} value={p.idea} onChange={e=>updatePost(si,pi,'idea',e.target.value)}/>
                             {s.posts.length>1 && <button className="btn-rmp" onClick={()=>rmPost(si,pi)}>×</button>}
                           </div>
                           <div className="fpills">
                             {POST_FMTS.map(([v,l])=>(
-                              <button key={v} className={`fp${p.fmt===v?' sel':''}`} onClick={()=>updatePost(si,pi,'fmt',v)}>{l}</button>
+                              <button key={v} className={`fp ${p.fmt===v?'sel':''}`} onClick={()=>updatePost(si,pi,'fmt',v)}>{l}</button>
                             ))}
                           </div>
                         </div>
                       ))}
                     </div>
-                    <button className="btn-add-p" onClick={()=>addPost(si)}>+ Ajouter un post à cette série</button>
+                    <button className="btn-add-p" onClick={()=>addPost(si)}>+ Ajouter un post dans cette série</button>
                   </div>
-                ))}
-              </div>
-
-              <button className="btn-add-s" onClick={addSeries}>+ Créer une nouvelle série</button>
+                </div>
+              ))}
+              
+              <button className="btn-add-s" onClick={addSeries}>+ Créer une nouvelle série de posts</button>
 
               <div className="btn-row">
                 <button className="btn-g" onClick={()=>go('explore')}>← Retour</button>
-                <button className="btn-b" disabled={!hasValidSeries} onClick={handleResult}>Terminer et envoyer →</button>
+                <button className="btn-b" disabled={!hasValidSeries} onClick={handleResult}>Terminer & voir le résumé →</button>
               </div>
             </div>
           )}
@@ -507,36 +508,22 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
           {screen==='result' && (
             <div className="qcard">
               <div className="prog-bar"><div className="prog-fill" style={{width:'100%'}}/></div>
-              <div className="badge">C'est terminé !</div>
-              <h2>Tes séries sont prêtes</h2>
-              <p className="sub">Tes réponses ont été sauvegardées et envoyées à Sarah. Tu peux retrouver le résumé ci-dessous.</p>
+              <div className="badge">Félicitations !</div>
+              <h2>C'est dans la boîte, {name}.</h2>
+              <p className="sub" style={{marginBottom:'1.2rem'}}>Sarah a été notifiée de ton travail. Tu peux retrouver ton résumé ci-dessous.</p>
+              
+              {slackOk && <div className="ok-banner">✅ Sarah a bien reçu ton workbook ! Tu peux fermer cette page sereinement.</div>}
+              {slackErr && <div className="err-banner">⚠️ {slackErr}</div>}
 
-              {slackOk ? (
-                <div className="ok-banner">
-                  <span style={{fontSize:'1.2rem'}}>✅</span>
-                  <div>
-                    Ton document a été transmis à Sarah !
-                  </div>
-                </div>
-              ) : slackErr ? (
-                <div className="err-banner">
-                  <span style={{fontSize:'1.1rem'}}>⚠️</span>
-                  <div>{slackErr}</div>
-                </div>
-              ) : (
-                <div className="ok-banner" style={{background:'rgba(1,142,187,.05)', borderColor:'rgba(1,142,187,.2)', color:'#018EBB'}}>
-                  <span>⏳</span> Envoi en cours vers Supabase...
-                </div>
-              )}
+              <div style={{maxHeight:'300px',overflowY:'auto',background:'rgba(18,28,40,.02)',borderRadius:'12px',padding:'1.2rem',border:'1px solid rgba(18,28,40,.08)',marginBottom:'1rem'}}>
+                <div dangerouslySetInnerHTML={{__html: buildResultHtml()}} />
+              </div>
 
-              <div dangerouslySetInnerHTML={{__html: buildResultHtml()}} />
-
-              <button className="btn-p" style={{marginTop:'1.5rem'}} onClick={downloadResult}>Télécharger le résumé (HTML)</button>
-              <button className="btn-dl" onClick={resetAll}>Recommencer</button>
-              <p className="fn">Workbook Propulsé par Kalanis</p>
+              <button className="btn-dl" onClick={downloadResult}>Télécharger mon résumé (.html)</button>
+              <button className="btn-g" style={{width:'100%',marginTop:'.8rem'}} onClick={resetAll}>Recommencer le questionnaire</button>
+              <p className="fn">Kalanis — Formation LinkedIn & Personal Branding</p>
             </div>
           )}
-
         </div>
       </div>
     </>
