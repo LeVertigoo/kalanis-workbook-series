@@ -226,6 +226,7 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
       // 1. Upload HTML vers Supabase Storage
       const filename = `Kalanis_Series_${name.replace(/\s+/g,'_')}.html`
       const htmlDoc = buildHtmlDoc()
+      const htmlBlob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' })
       await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_PATH}/${filename}`, {
         method: 'POST',
         headers: {
@@ -233,7 +234,7 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
           'Content-Type': 'text/html;charset=utf-8',
           'x-upsert': 'true'
         },
-        body: htmlDoc
+        body: htmlBlob
       })
       const html_url = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_PATH}/${filename}`
 
