@@ -4,8 +4,6 @@ import { createClient } from '@supabase/supabase-js'
 const WEBHOOK_URL = 'https://n8n.srv1272919.hstgr.cloud/webhook/kalanis-workbook-series'
 const SUPABASE_URL = 'https://qglyfohuebgbuztjqaok.supabase.co'
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnbHlmb2h1ZWJnYnV6dGpxYW9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTgxODQsImV4cCI6MjA5MTgzNDE4NH0.HKqxiTKQDV8zvfpTmE8RlDq_GsbwHATzfn1gyDkJLxQ'
-const STORAGE_BUCKET = 'formation-docs'
-const STORAGE_FOLDER = 'workbook-series'
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
 
 const FMT = { texte: 'Texte', image: 'Texte + image', infographie: 'Infographie', carrousel: 'Carrousel', video: 'Vidéo' }
@@ -152,6 +150,17 @@ export default function Workbook() {
 
   const go = (s) => { setScreen(s); window.scrollTo(0,0) }
 
+  // Mode vue : ?view={uuid}
+  useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    const viewId = params.get('view')
+    if (!viewId) return
+    supabase.from('workbook_series').select('nom, result_html').eq('id', viewId).single()
+      .then(({ data }) => {
+        if (data) { setName(data.nom); setResultHtml(data.result_html); setScreen('result') }
+      })
+  })
+
   // Explore
   const startExplore = () => {
     if (!filled.length) { goSeries(); return }
@@ -191,7 +200,7 @@ export default function Workbook() {
 
   // Result
   const buildHtmlDoc = () => {
-    const resHtml = buildResultHtml()
+    const resHtml = resultHtml || buildResultHtml()
     const title = `Tes séries, ${name} 🎯`
     return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${title} — Kalanis</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#FAF9F2;padding:2rem 1rem}.container{max-width:620px;margin:0 auto}h1{font-size:1.4rem;font-weight:800;color:#121C28;margin-bottom:.4rem}.meta{font-size:.8rem;color:#718096;margin-bottom:1.5rem}.badge{display:inline-block;background:#018EBB;color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;text-transform:uppercase;font-weight:700;letter-spacing:.08em;margin-bottom:1rem}.chip{display:inline-block;background:rgba(1,142,187,.10);color:#018EBB;border-radius:20px;padding:3px 11px;font-size:.77rem;font-weight:700;margin:2px}.rh{background:rgba(1,142,187,.06);border:1.5px solid rgba(1,142,187,.15);border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem}.rs{background:#fff;border:1.5px solid rgba(18,28,40,.10);border-radius:14px;padding:1.1rem 1.25rem;margin-bottom:.85rem}.rs-title{font-size:.94rem;font-weight:800;color:#121C28;margin-bottom:.4rem}.rs-prob{font-size:.79rem;color:#4a5568;margin-bottom:.7rem;font-style:italic}.rs-posts{list-style:none}.rs-posts li{font-size:.79rem;color:#4a5568;padding:4px 0;display:flex;align-items:flex-start;gap:7px;line-height:1.4}.rs-fmt{font-size:.64rem;font-weight:700;background:rgba(1,142,187,.10);color:#018EBB;border-radius:5px;padding:2px 7px;flex-shrink:0;margin-top:1px}footer{text-align:center;font-size:.72rem;color:#a0aec0;margin-top:2rem;padding-top:1rem;border-top:1px solid rgba(18,28,40,.07)}</style>
@@ -224,21 +233,19 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
 
   const handleResult = async () => {
     setSlackOk(false); setSlackErr('')
+    const resHtml = buildResultHtml()
+    setResultHtml(resHtml)
     go('result')
     try {
-      // 1. Upload HTML vers Supabase Storage via SDK
-      const filename = `Kalanis_Series_${name.replace(/\s+/g,'_')}.html`
-      const htmlDoc = buildHtmlDoc()
-      const htmlBlob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' })
-      await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(`${STORAGE_FOLDER}/${filename}`, htmlBlob, {
-          contentType: 'text/html;charset=utf-8',
-          upsert: true
-        })
-      const { data: { publicUrl: html_url } } = supabase.storage
-        .from(STORAGE_BUCKET)
-        .getPublicUrl(`${STORAGE_FOLDER}/${filename}`)
+      // 1. Sauvegarde dans Supabase Database
+      const { data: row, error } = await supabase
+        .from('workbook_series')
+        .insert({ nom: name, result_html: resHtml, data: buildPayload(null) })
+        .select('id')
+        .single()
+      if (error) throw error
+
+      const html_url = `${window.location.origin}?view=${row.id}`
 
       // 2. Envoi webhook N8N avec l'URL publique
       const resp = await fetch(WEBHOOK_URL, {
@@ -508,7 +515,7 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
                   <span>{slackErr}</span>
                 </div>
               )}
-              <div id="res-content" dangerouslySetInnerHTML={{__html: buildResultHtml()}}/>
+              <div id="res-content" dangerouslySetInnerHTML={{__html: resultHtml || buildResultHtml()}}/>
               <button className="btn-dl" onClick={downloadResult}>⬇ Télécharger le résumé (HTML)</button>
               <button className="btn-g" onClick={resetAll} style={{marginTop:'.6rem',width:'100%',display:'block'}}>Recommencer</button>
               <p className="fn">Sarah recevra ce résumé avant votre call pour préparer votre session ensemble.</p>
