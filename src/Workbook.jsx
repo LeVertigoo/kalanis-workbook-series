@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 
 // --- CONFIGURATION SUPABASE ---
 const SUPABASE_URL = 'https://qglyfohuebgbuztjqaok.supabase.co'
-const SUPABASE_KEY = 'TA_CLE_ANON_PUBLIC_ICI'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnbHlmb2h1ZWJnYnV6dGpxYW9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTgxODQsImV4cCI6MjA5MTgzNDE4NH0.HKqxiTKQDV8zvfpTmE8RlDq_GsbwHATzfn1gyDkJLxQ'
 const BUCKET_NAME = 'formation-docs'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
