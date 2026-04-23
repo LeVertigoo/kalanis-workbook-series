@@ -1,6 +1,9 @@
 import { useState, useRef } from 'react'
 
 const WEBHOOK_URL = 'https://n8n.srv1272919.hstgr.cloud/webhook/kalanis-workbook-series'
+const SUPABASE_URL = 'https://qglyfohuebgbuztjqaok.supabase.co'
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnbHlmb2h1ZWJnYnV6dGpxYW9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTgxODQsImV4cCI6MjA5MTgzNDE4NH0.HKqxiTKQDV8zvfpTmE8RlDq_GsbwHATzfn1gyDkJLxQ'
+const STORAGE_PATH = 'formation-docs/workbook-series'
 
 const FMT = { texte: 'Texte', image: 'Texte + image', infographie: 'Infographie', carrousel: 'Carrousel', video: 'Vidéo' }
 const CAD = { '1-2': '1–2 posts/sem', '3-4': '3–4 posts/sem', '5+': '5+ posts/sem' }
@@ -194,14 +197,14 @@ export default function Workbook() {
 ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>`
   }
 
-  const buildPayload = () => ({
+  const buildPayload = (html_url) => ({
     nom: name,
     email: email || null,
     sujets: subjects.filter(Boolean),
     format_principal: FMT[fmt]||fmt,
     cadence: CAD[cad]||cad,
     filename: `Kalanis_Series_${name.replace(/\s+/g,'_')}.html`,
-    html_content: buildHtmlDoc(),
+    html_url: html_url || null,
     observations: filled.map(x=>({
       sujet: x.t,
       erreur_frequente: exps[x.i].e||null,
@@ -220,10 +223,25 @@ ${resHtml}<footer>Kalanis — Document confidentiel</footer></div></body></html>
     setSlackOk(false); setSlackErr('')
     go('result')
     try {
+      // 1. Upload HTML vers Supabase Storage
+      const filename = `Kalanis_Series_${name.replace(/\s+/g,'_')}.html`
+      const htmlDoc = buildHtmlDoc()
+      await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_PATH}/${filename}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_ANON}`,
+          'Content-Type': 'text/html;charset=utf-8',
+          'x-upsert': 'true'
+        },
+        body: htmlDoc
+      })
+      const html_url = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_PATH}/${filename}`
+
+      // 2. Envoi webhook N8N avec l'URL publique
       const resp = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildPayload())
+        body: JSON.stringify(buildPayload(html_url))
       })
       if (resp.ok) setSlackOk(true)
       else setSlackErr(`Erreur ${resp.status} lors de l'envoi. Télécharge le résumé ci-dessous.`)
